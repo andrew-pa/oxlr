@@ -42,7 +42,7 @@ Module(
                             StoreField(LiteralInt(Integer(width: 64, signed: false, data: 3)), Register(0), Symbol("a")),
                             StoreField(LiteralInt(Integer(width: 64, signed: false, data: 9)), Register(0), Symbol("b")),
                             RefField(Register(1), Register(0), Symbol("b")),
-                            Call(Register(2), Path([Symbol("ref_to_inner_field"), Symbol("incr")]),
+                            Call(Some(Register(2)), Path([Symbol("ref_to_inner_field"), Symbol("incr")]),
                             [Reg(Register(1))]),
                             LoadField(Register(3), Register(0), Symbol("b")),
                             BinaryOp(Sub, Register(4), Reg(Register(3)),

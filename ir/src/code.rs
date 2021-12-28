@@ -171,7 +171,7 @@ pub enum Instruction {
     /// Call a function referenced by the path, placing the return value in the destination register
     Call(
         /// Destination for return value
-        Register,
+        Option<Register>,
         /// Path to the function
         Path,
         /// Argument values
@@ -181,7 +181,7 @@ pub enum Instruction {
     /// value in the destination register. The first parameter's type will be used to find the specific implementation
     CallImpl(
         /// Destination for return value
-        Register,
+        Option<Register>,
         /// Path to the function on the interface (not the implementation)
         Path,
         /// Argument values

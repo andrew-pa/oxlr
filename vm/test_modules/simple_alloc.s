@@ -31,7 +31,7 @@ Module(
                         instrs: [
                             Alloc(Register(0), Int(width: 64, signed: false)),
                             StoreRef(Register(0), LiteralInt(Integer(width: 64, signed: false, data: 22))),
-                            Call(Register(1), Path([Symbol("simple_alloc"), Symbol("subtract 22")]), [Reg(Register(0))]),
+                            Call(Some(Register(1)), Path([Symbol("simple_alloc"), Symbol("subtract 22")]), [Reg(Register(0))]),
                             LoadRef(Register(2), Register(0)),
                             Return(Reg(Register(2)))
                         ],

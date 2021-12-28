@@ -42,7 +42,7 @@ Module(
                                 LiteralInt(Integer(width: 64, signed: false, data: 1)),
                                 LiteralInt(Integer(width: 64, signed: false,  data: 6))),
                             RefIndex(Register(1), Register(0), LiteralInt(Integer(width: 64, signed: false, data: 1))),
-                            Call(Register(2), Path([Symbol("ref_to_inner_element"), Symbol("incr")]),
+                            Call(Some(Register(2)), Path([Symbol("ref_to_inner_element"), Symbol("incr")]),
                             [Reg(Register(1))]),
                             LoadIndex(Register(3), Register(0), LiteralInt(Integer(width: 64,
                                 signed: false, data: 1))),

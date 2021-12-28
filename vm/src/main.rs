@@ -200,7 +200,9 @@ impl<'w> Machine<'w> {
                         let (fn_sig, fn_body) = self.world.get_function(fn_path).ok_or_else(|| anyhow!("function not found"))?;
                         let params = params.iter().map(|p| self.mem.cur_frame().convert_value(p)).collect();
                         let result = self.call_fn(fn_body, params)?;
-                        self.mem.cur_frame().store(dest, result)
+                        if let Some(dst) = dest {
+                            self.mem.cur_frame().store(dst, result)
+                        }
                     },
                     Instruction::CallImpl(dest, fn_path, params) => {
                         log::trace!("calling {}", fn_path);
@@ -210,7 +212,9 @@ impl<'w> Machine<'w> {
                         let (fn_sig, fn_body) = self.world.find_impl(fn_path, &self_val.type_of(&self.mem))
                             .ok_or_else(|| anyhow!("implementation not found"))?;
                         let result = self.call_fn(fn_body, params)?;
-                        self.mem.cur_frame().store(dest, result)
+                        if let Some(dst) = dest {
+                            self.mem.cur_frame().store(dst, result)
+                        }
                     },
                     Instruction::Return(v) => {
                         log::trace!("return");

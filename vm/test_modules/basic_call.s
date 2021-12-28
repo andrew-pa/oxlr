@@ -35,7 +35,7 @@ Module(
                 blocks: [
                     BasicBlock(
                         instrs: [
-                            Call(Register(0), Path([Symbol("basic_call"), Symbol("muladd")]),
+                            Call(Some(Register(0)), Path([Symbol("basic_call"), Symbol("muladd")]),
                                 [ LiteralInt(Integer(width: 32, signed: true, data: 3)),
                                 LiteralInt(Integer(width: 32, signed: true, data: 5)),
                                 LiteralInt(Integer(width: 32, signed: true, data: 0)) ]),

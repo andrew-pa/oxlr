@@ -35,8 +35,8 @@ Module(
                         instrs: [
                             BinaryOp(Sub, Register(2), Reg(Register(0)), LiteralInt(Integer(width: 64, signed: false, data: 1))),
                             BinaryOp(Sub, Register(3), Reg(Register(0)), LiteralInt(Integer(width: 64, signed: false, data: 2))),
-                            Call(Register(4), Path([Symbol("rec_call"), Symbol("fib")]), [ Reg(Register(2)) ]),
-                            Call(Register(5), Path([Symbol("rec_call"), Symbol("fib")]), [ Reg(Register(3)) ]),
+                            Call(Some(Register(4)), Path([Symbol("rec_call"), Symbol("fib")]), [ Reg(Register(2)) ]),
+                            Call(Some(Register(5)), Path([Symbol("rec_call"), Symbol("fib")]), [ Reg(Register(3)) ]),
                             BinaryOp(Add, Register(6), Reg(Register(4)), Reg(Register(5))),
                             Return(Reg(Register(6)))
                         ],
@@ -52,7 +52,7 @@ Module(
                 blocks: [
                     BasicBlock(
                         instrs: [
-                            Call(Register(0), Path([Symbol("rec_call"), Symbol("fib")]), [ LiteralInt(Integer(width: 64, signed: false, data: 10)) ]),
+                            Call(Some(Register(0)), Path([Symbol("rec_call"), Symbol("fib")]), [ LiteralInt(Integer(width: 64, signed: false, data: 10)) ]),
                             BinaryOp(Sub, Register(1), LiteralInt(Integer(width: 64, signed: false, data: 144)), Reg(Register(0))),
                             Return(Reg(Register(1)))
                         ],
