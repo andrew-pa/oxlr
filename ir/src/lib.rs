@@ -65,6 +65,8 @@ pub enum Type {
 /// A user defined type definition
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TypeDefinition {
+    /// For variants of sum types with no inner data
+    Empty,
     /// A single type that gets a new user specified name
     /// Provided to support variants that contain only a single value
     NewType(Type),
@@ -73,6 +75,7 @@ pub enum TypeDefinition {
         /// The type parameters required by this type. Vector of (name of parameter, list of interfaces it must implement)
         parameters: Vec<(Symbol, Vec<Path>)>,
         /// Ordered mapping between variant names and their internal type definition
+        /// The path to the inner type definition is `<name of sum type>::<name of variant>`
         variants: Vec<(Symbol, TypeDefinition)>
     },
     /// A product type (a struct) that contains a number of named, typed fields
@@ -133,6 +136,12 @@ impl Path {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item=&mut Symbol> {
         self.0.iter_mut()
+    }
+
+    pub fn concat(&self, sym: Symbol) -> Path {
+        let mut p = self.0.clone();
+        p.push(sym);
+        Path(p)
     }
 
     /// Returns the path that is a subpath of this one from the beginning, including `len` path symbols

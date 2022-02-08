@@ -223,7 +223,25 @@ impl<'w> Machine<'w> {
                         return Ok(rv)
                     },
                     Instruction::RefFunc(dest, _) => todo!(),
-                    Instruction::UnwrapVariant(dest, _, _, _) => todo!(),
+                    Instruction::UnwrapVariant(cond_dest, inner_ref_dest, src_val, variant_name) => {
+                        match self.mem.cur_frame().load(src_val) {
+                            Value::Ref(r) => {
+                                let (ac_name, inner_ref) = r.unwrap_variant(self.world)?;
+                                let valid_unwrap = ac_name == variant_name;
+                                if valid_unwrap {
+                                    if let Some(inner_ref_dest) = inner_ref_dest {
+                                        if let Some(inner_ref) = inner_ref {
+                                            self.mem.cur_frame().store(inner_ref_dest, Value::Ref(inner_ref));
+                                        } else {
+                                            todo!("tried to get ref to inner value of variant but there was none?");
+                                        }
+                                    }
+                                }
+                                self.mem.cur_frame().store(&cond_dest, Value::Bool(valid_unwrap));
+                            },
+                            _ => bail!("expected ref")
+                        }
+                    },
                     Instruction::Alloc(dest, r#type) => {
                         let nrf = self.mem.alloc(r#type)?;
                         self.mem.cur_frame().store(dest, nrf);
@@ -286,6 +304,91 @@ impl<'w> Machine<'w> {
                                     unsafe { memcpy(data, copy.data, size); }
                                 } else { unreachable!() }
                                 self.mem.cur_frame().store(dest, copy);
+                            }
+                            _ => bail!("expected ref")
+                        }
+                    },
+
+                    Instruction::SetVariant(dest, new_tag_name, src) => {
+                        // this implementation is so unnecessarily ugly. Why? So many nested `match`
+                        // expressions! Perhaps we're thinking about this wrong? There's just a lot
+                        // to check, and admittedly the other instructions currently do little to
+                        // no type checking so maybe this is indicative of spaghetti to follow
+                        let src = self.mem.cur_frame().convert_value(src);
+                        let src_type = src.type_of(&self.mem);
+                        match self.mem.cur_frame().load(dest) {
+                            Value::Ref(memory::Ref { ty: dest_ty, data: dest_data }) => {
+                                // get the type definition so we can do some type checking and find
+                                // the index for name
+                                match dest_ty.as_ref() {
+                                    ir::Type::User(td_path, None) => {
+                                        let td = self.world.get_type(td_path)
+                                            .ok_or_else(|| anyhow!("type does not exist"))?;
+                                        match td {
+                                            ir::TypeDefinition::Sum { variants, .. } => {
+                                                // get the index and type definition for the variant named `new_tag_name`
+                                                let (variant_index, inner_type_def) =
+                                                    variants.iter()
+                                                    .enumerate()
+                                                    .find(|(_, (n, _ ))| n == new_tag_name)
+                                                    .map (|(i, (_, td))| (i, td))
+                                                    .ok_or_else(|| anyhow!("variant of sum type does not exist"))?;
+
+                                                // make sure the new data is compatiable with the new tag's inner type definition
+                                                match (inner_type_def, &src_type) {
+                                                    // no inner data
+                                                    (ir::TypeDefinition::Empty, ir::Type::Unit) => {/* do nothing since there is no actual data to copy */},
+
+                                                    // a single inner value
+                                                    (ir::TypeDefinition::NewType(inner_t), ir::Type::Ref(refd_src_t)) => {
+                                                        if refd_src_t.as_ref() != inner_t {
+                                                            bail!("source type {:?} does not match inner destination type {:?}", refd_src_t, inner_type_def);
+                                                        }
+                                                    },
+
+                                                    // a composite (unnamed) inner value
+                                                    (_, ir::Type::Ref(refd_src_t)) => match refd_src_t.as_ref() {
+                                                        // make sure that the reference we're copying from has the type of the inner composite
+                                                        ir::Type::User(src_typename, _) => {
+                                                            if *src_typename != td_path.concat(new_tag_name.clone()) {
+                                                                bail!("source type {:?} does not match inner composite destination type {:?}", src_type, inner_type_def);
+                                                            }
+                                                        },
+                                                        t => bail!("expected ref to inner composite type, got {:?} instead", t)
+                                                    },
+
+                                                    _ => bail!("type mismatch")
+                                                    // ?? need to check if src type === inner_type
+                                                    // do we want to only copy out of references,
+                                                    // or should we allow copying direct values to
+                                                    // allow for literals and fast access to
+                                                    // registers -> variant inners???
+                                                    // We could interpret Value::Ref srcs as a
+                                                    // request to copy the value behind the ref,
+                                                    // which will make nested refs inside variants
+                                                    // the complex edge case. Perhaps that is
+                                                    // ideal, but it makes this Copy... instruction
+                                                    // have different semantics than the rest. In
+                                                    // all reality this instruction is really more
+                                                    // like "seting" or even "initializing" a sum typed value
+                                                }
+
+                                                if let Value::Ref(src_ref) = src {
+                                                    // write the actual variant tag and copy the data
+                                                    unsafe {
+                                                        *(dest_data as *mut u64) = variant_index as u64;
+                                                        memcpy(src_ref.data, dest_data.offset(std::mem::size_of::<u64>() as isize),
+                                                            self.world.size_of_type(&src_type)?);
+                                                    }
+                                                } else {
+                                                    unreachable!()
+                                                }
+                                            },
+                                            _ => bail!("destination not a variant")
+                                        }
+                                    },
+                                    _ => bail!("invalid type for destination reference")
+                                }
                             }
                             _ => bail!("expected ref")
                         }

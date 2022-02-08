@@ -86,8 +86,20 @@ impl World {
 
     /// look up a type definition by path
     pub fn get_type(&self, path: &ir::Path) -> Option<&ir::TypeDefinition> {
-        let m = self.get_module(&path.subpath(1))?;
-        m.types.get(path.last())
+        match self.get_module(&path.subpath(1)) {
+            Some(m) => m.types.get(path.last()),
+            None => {
+                // check to see if this is the path to the variant of a sum type
+                let m = self.get_module(&path.subpath(2))?;
+                match m.types.get(path.last())? {
+                    ir::TypeDefinition::Sum { variants, .. } => {
+                        Some(&variants.iter()
+                            .find(|(name, _)| name == path.last())?.1)
+                    }
+                    _ => None
+                }
+            }
+        }
     }
 
     /// look up an interface by path
@@ -116,10 +128,10 @@ impl World {
         if let Some(_) = params {
             todo!("compute the size of a specialized generic type");
         } else {
-            match td {
+            Ok(match td {
                 ir::TypeDefinition::Sum { variants, .. } => {
-                    variants.iter().map(|(_, td)| self.size_of_user_type(td, &None))
-                        .fold_ok(0, |a, b| a.max(b))
+                    std::mem::size_of::<u64>() + variants.iter().map(|(_, td)| self.size_of_user_type(td, &None))
+                        .fold_ok(0, |a, b| a.max(b))?
                 },
                 ir::TypeDefinition::Product { fields, .. } => {
                     let mut size = 0;
@@ -128,10 +140,11 @@ impl World {
                         while size % ralign != 0 { size += 1; }
                         size += self.size_of_type(ty)?;
                     }
-                    Ok(size)
+                    size
                 }
-                ir::TypeDefinition::NewType(t) => self.size_of_type(t),
-            }
+                ir::TypeDefinition::NewType(t) => self.size_of_type(t)?,
+                ir::TypeDefinition::Empty => 0,
+            })
         }
     }
 

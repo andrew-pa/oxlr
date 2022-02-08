@@ -193,14 +193,14 @@ pub enum Instruction {
     /// Create a function pointer to a function at the path
     RefFunc(Register, Path),
 
-    /// Test to see if a sum type value matches a specific variant, optionally unwrapping its contained value and putting it in a register
+    /// Test to see if a sum type value matches a specific variant, optionally unwrapping its contained value and putting a reference to it in a register
     UnwrapVariant(
         /// Destination register set to true or false depending on if this was a successful match 
         Register,
-        /// Optional destination register set to inner value of the variant
+        /// Optional destination register store the reference to the inner value of the variant
         Option<Register>,
         /// The variant value to test
-        Value,
+        Register,
         /// The name of the variant to test for
         Symbol
     ),
@@ -247,6 +247,16 @@ pub enum Instruction {
         Register,
         /// Reference to copy into the heap
         Register
+    ),
+
+    /// Copy data out of a reference into a sum data object, changing the variant tag in the process and replacing whatever was inside before
+    SetVariant(
+        /// Reference to destination sum data object
+        Register,
+        /// Name of variant to tag data with
+        Symbol,
+        /// Source reference to copy or nil for selecting a variant that doesn't have inner data
+        Value,
     )
 }
 

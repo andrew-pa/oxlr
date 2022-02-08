@@ -34,7 +34,7 @@ impl Ref {
         }
     }
 
-    /// Read the date inside the ref and return it as a Value
+    /// Read the data inside the ref and return it as a Value
     pub fn value(&self) -> Value {
         unsafe {
             let ptr = self.data;
@@ -98,6 +98,7 @@ impl Ref {
         }
     }
 
+    /// For tuples and arrays, returns a reference to the value at the index
     pub fn indexed(&self, world: &World, index: usize) -> Result<Ref> {
         //TODO: bounds checking
         match self.type_of() {
@@ -125,6 +126,7 @@ impl Ref {
         }
     }
 
+    /// For product types, return a reference to the named field
     pub fn field<'w>(&self, world: &'w World, field: &ir::Symbol) -> Result<Ref> {
         match self.type_of() {
             ir::Type::User(path, None) => {
@@ -135,7 +137,7 @@ impl Ref {
                             data: self.data
                         }) // should probably check what the field name is?
                     },
-                    Some(ir::TypeDefinition::Sum { .. }) => {
+                    Some(ir::TypeDefinition::Empty) | Some(ir::TypeDefinition::Sum { .. }) => {
                         Err(anyhow!("invalid type for field lookup"))
                     },
                     Some(ir::TypeDefinition::Product { fields, .. }) => {
@@ -159,6 +161,29 @@ impl Ref {
             },
             ir::Type::User(path, Some(params)) => todo!(),
             _ => Err(anyhow!("invalid type for field lookup"))
+        }
+    }
+
+    /// For sum types, return the variant name and a reference to the inner data, if any
+    pub fn unwrap_variant<'w>(&self, world: &'w World) -> Result<(&'w ir::Symbol, Option<Ref>)> {
+        match self.type_of() {
+            ir::Type::User(path, None) => {
+                match world.get_type(path) {
+                    Some(ir::TypeDefinition::Sum { variants, .. }) => {
+                        let ty_ix = unsafe {
+                            *(self.data as *mut u64)
+                        } as usize;
+                        let vd = &variants[ty_ix];
+                        Ok((&vd.0, Some(Ref {
+                            ty: Box::new(ir::Type::User(path.concat(vd.0.clone()), None)),
+                            data: unsafe { self.data.offset((size_of::<u64>()) as isize) }
+                        })))
+                    }
+                    _ => Err(anyhow!("invalid type for variant unwrap"))
+                }
+            },
+            ir::Type::User(path, Some(params)) => todo!(),
+            _ => Err(anyhow!("invalid type for variant unwrap"))
         }
     }
 }
