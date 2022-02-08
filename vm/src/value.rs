@@ -17,7 +17,7 @@ impl Value {
             Value::Bool(_) => ir::Type::Bool,
             Value::Int(i) => ir::Type::Int { signed: i.signed, width: i.width },
             Value::Float(f) => ir::Type::Float { width: f.width() },
-            Value::Ref(v) => v.type_of().clone(),
+            Value::Ref(v) => ir::Type::Ref(Box::new(v.type_of().clone())),
             Value::Fn => ir::Type::FnRef(todo!()),
         }
     }

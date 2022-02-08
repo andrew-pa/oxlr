@@ -90,8 +90,7 @@ impl World {
             Some(m) => m.types.get(path.last()),
             None => {
                 // check to see if this is the path to the variant of a sum type
-                let m = self.get_module(&path.subpath(2))?;
-                match m.types.get(path.last())? {
+                match self.get_type(&path.subpath(1))? {
                     ir::TypeDefinition::Sum { variants, .. } => {
                         Some(&variants.iter()
                             .find(|(name, _)| name == path.last())?.1)

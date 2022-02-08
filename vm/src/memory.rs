@@ -173,11 +173,19 @@ impl Ref {
                         let ty_ix = unsafe {
                             *(self.data as *mut u64)
                         } as usize;
-                        let vd = &variants[ty_ix];
-                        Ok((&vd.0, Some(Ref {
-                            ty: Box::new(ir::Type::User(path.concat(vd.0.clone()), None)),
-                            data: unsafe { self.data.offset((size_of::<u64>()) as isize) }
-                        })))
+                        let data_ptr = unsafe { self.data.offset((size_of::<u64>()) as isize) };
+                        let (variant_name, variant_typedef) = &variants[ty_ix];
+                        Ok((&variant_name, match variant_typedef {
+                            ir::TypeDefinition::Empty => None,
+                            ir::TypeDefinition::NewType(ty) => Some(Ref {
+                                ty: Box::new(ty.clone()),
+                                data: data_ptr
+                            }),
+                            _ => Some(Ref {
+                                ty: Box::new(ir::Type::User(path.concat(variant_name.clone()), None)),
+                                data: data_ptr
+                            })
+                        }))
                     }
                     _ => Err(anyhow!("invalid type for variant unwrap"))
                 }
@@ -396,4 +404,13 @@ impl Frame {
     }
 }
 
+impl std::fmt::Display for Frame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "frame with {} bytes on the stack\n", self.data_stack_size)?;
+        for (ix, reg) in self.registers.iter().enumerate() {
+            write!(f, "[{}]: {:?}\n", ix, reg)?;
+        }
+        Ok(())
+    }
+}
 

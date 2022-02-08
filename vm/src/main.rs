@@ -51,8 +51,8 @@ impl<'w> Machine<'w> {
         'blocks: loop {
             let cur_block = &body.blocks[cur_block_index];
             for instr in cur_block.instrs.iter() {
+                log::debug!("current {}", self.mem.cur_frame());
                 log::debug!("running instruction {:?}", instr);
-                log::debug!("current frame {:?}", self.mem.cur_frame());
                 use ir::code::Instruction;
                 match instr {
                     Instruction::Phi(dest, precedents) => {
@@ -223,6 +223,7 @@ impl<'w> Machine<'w> {
                         return Ok(rv)
                     },
                     Instruction::RefFunc(dest, _) => todo!(),
+
                     Instruction::UnwrapVariant(cond_dest, inner_ref_dest, src_val, variant_name) => {
                         match self.mem.cur_frame().load(src_val) {
                             Value::Ref(r) => {
@@ -242,6 +243,7 @@ impl<'w> Machine<'w> {
                             _ => bail!("expected ref")
                         }
                     },
+
                     Instruction::Alloc(dest, r#type) => {
                         let nrf = self.mem.alloc(r#type)?;
                         self.mem.cur_frame().store(dest, nrf);
@@ -357,7 +359,7 @@ impl<'w> Machine<'w> {
                                                         t => bail!("expected ref to inner composite type, got {:?} instead", t)
                                                     },
 
-                                                    _ => bail!("type mismatch")
+                                                    (i,s) => bail!("type mismatch. inner type {:?}, source type {:?}", i, s)
                                                     // ?? need to check if src type === inner_type
                                                     // do we want to only copy out of references,
                                                     // or should we allow copying direct values to
@@ -373,15 +375,17 @@ impl<'w> Machine<'w> {
                                                     // like "seting" or even "initializing" a sum typed value
                                                 }
 
+                                                // write the actual variant tag
+                                                unsafe {
+                                                    *(dest_data as *mut u64) = variant_index as u64;
+                                                }
+
+                                                // copy the data, if any
                                                 if let Value::Ref(src_ref) = src {
-                                                    // write the actual variant tag and copy the data
                                                     unsafe {
-                                                        *(dest_data as *mut u64) = variant_index as u64;
                                                         memcpy(src_ref.data, dest_data.offset(std::mem::size_of::<u64>() as isize),
                                                             self.world.size_of_type(&src_type)?);
                                                     }
-                                                } else {
-                                                    unreachable!()
                                                 }
                                             },
                                             _ => bail!("destination not a variant")
