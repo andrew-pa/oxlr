@@ -1,14 +1,14 @@
 //! This module defines the structure of the IR virtual machine code, which is in single static
 //! assignment form. Code is always found inside function bodies as [`FnBody`], organized into
 //! single [`BasicBlock`]s, each of which represents a continuous path of execution.
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 
 use serde::{Serialize, Deserialize};
 use super::{Symbol, Path, Type, numbers::Integer, numbers::Float};
 
 /// A reference to a virtual machine register
 /// In keeping with SSA form, a register can only be assigned to once in the program, but the value can be used many times
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct Register(pub u32);
 
 /// A reference to a [`BasicBlock`] within a function body, by index
@@ -29,6 +29,15 @@ pub enum Value {
     LiteralBool(bool),
     /// A reference to the value stored in a register
     Reg(Register)
+}
+
+impl Value {
+    fn unwrap_reg(self) -> Register {
+        match self {
+            Value::Reg(r) => r,
+            _ => panic!("attempted to unwrap value ({:?}) as a register", self)
+        }
+    }
 }
 
 /// Operations on two values that can be executed by the [`BinaryOp`](Instruction::BinaryOp) instruction.
@@ -277,3 +286,158 @@ pub struct FnBody {
     /// The basic blocks that are contained in the function body. [`BlockIndex`] values are indices inside this vector.
     pub blocks: Vec<BasicBlock>
 }
+
+pub struct FnBodyBuilder {
+    res: FnBody
+}
+
+pub struct BasicBlockBuilder<'parent> {
+    fnbody: &'parent mut FnBodyBuilder,
+    block_index: usize
+}
+
+impl FnBodyBuilder {
+    pub fn new() -> FnBodyBuilder {
+        FnBodyBuilder {
+            res: FnBody {
+                max_registers: 0,
+                blocks: Vec::new()
+            }
+        }
+    }
+
+    /// Start adding a new basic block to the function
+    pub fn start_block(&mut self) -> BasicBlockBuilder {
+        let block_index = self.res.blocks.len();
+
+        self.res.blocks.push(BasicBlock {
+            instrs: Vec::new(),
+            next_block: usize::MAX
+        });
+
+        BasicBlockBuilder {
+            fnbody: self,
+            block_index
+        }
+    }
+
+    pub fn next_register(&mut self) -> Register {
+        let reg = Register(self.res.max_registers);
+        self.res.max_registers += 1;
+        reg
+    }
+
+    pub fn build(self) -> FnBody { self.res }
+}
+
+impl<'a> BasicBlockBuilder<'a> {
+    /// Finish buliding the block, returning the index of the new block
+    pub fn build(self) -> BlockIndex {
+        self.block_index
+    }
+
+    fn push_instr(&mut self, instr: Instruction) {
+        self.fnbody.res.blocks[self.block_index].instrs.push(instr);
+    }
+
+    fn push_instr_with_dest(&mut self, f: impl FnOnce(Register)->Instruction) -> Value {
+        let dest = self.fnbody.next_register();
+        self.push_instr(f(dest));
+        Value::Reg(dest)
+    }
+
+    pub fn phi(&mut self, values: HashMap<BlockIndex, Value>) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::Phi(dest, values))
+    }
+
+    pub fn branch(&mut self, cond: Value, if_true: BlockIndex, if_false: BlockIndex) {
+        self.push_instr(Instruction::Br { cond, if_true, if_false });
+    }
+
+    pub fn binary_op(&mut self, op: BinOp, left: Value, right: Value) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::BinaryOp(op, dest, left, right))
+    }
+
+    pub fn unary_op(&mut self, op: UnaryOp, val: Value) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::UnaryOp(op, dest, val))
+    }
+
+    pub fn load_immediate(&mut self, val: Value) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::LoadImm(dest, val))
+    }
+
+    pub fn load_ref(&mut self, r#ref:  Value) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::LoadRef(dest, r#ref.unwrap_reg()))
+    }
+
+    pub fn store_ref(&mut self, dest: Value, value: Value) {
+        self.push_instr(Instruction::StoreRef(dest.unwrap_reg(), value));
+    }
+
+    pub fn ref_index(&mut self, cont: Value, index: Value) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::RefIndex(dest, cont.unwrap_reg(), index))
+    }
+
+    pub fn ref_field(&mut self, cont: Value, field_name: Symbol) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::RefField(dest, cont.unwrap_reg(), field_name))
+    }
+
+    pub fn call(&mut self, fn_path: Path, args: Vec<Value>) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::Call(Some(dest), fn_path, args))
+    }
+
+    pub fn call_ignore_ret(&mut self, fn_path: Path, args: Vec<Value>) {
+        self.push_instr(Instruction::Call(None, fn_path, args))
+    }
+
+    pub fn call_impl(&mut self, interface_fn_path: Path, args: Vec<Value>) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::CallImpl(Some(dest), interface_fn_path, args))
+    }
+
+    pub fn call_impl_ignore_ret(&mut self, interface_fn_path: Path, args: Vec<Value>) {
+        self.push_instr(Instruction::CallImpl(None, interface_fn_path, args))
+    }
+
+    pub fn ret(&mut self, val: Value) {
+        self.push_instr(Instruction::Return(val));
+    }
+
+    pub fn check_variant(&mut self, val: Value, variant_name: Symbol) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::UnwrapVariant(dest, None, val.unwrap_reg(), variant_name))
+    }
+
+    pub fn unwrap_variant(&mut self, val: Value, variant_name: Symbol) -> (Value, Value) {
+        let ref_dest = self.fnbody.next_register();
+        (self.push_instr_with_dest(|dest| Instruction::UnwrapVariant(dest, Some(ref_dest), val.unwrap_reg(), variant_name)), Value::Reg(ref_dest))
+    }
+
+    pub fn alloc(&mut self, ty: Type) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::Alloc(dest, ty))
+    }
+
+    pub fn alloc_array(&mut self, ty: Type, size: Value) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::AllocArray(dest, ty, size))
+    }
+
+    pub fn stack_alloc(&mut self, ty: Type) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::StackAlloc(dest, ty))
+    }
+
+    pub fn stack_alloc_array(&mut self, ty: Type, size: Value) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::StackAllocArray(dest, ty, size))
+    }
+
+    pub fn copy_to_stack(&mut self, r#ref: Value) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::CopyToStack(dest, r#ref.unwrap_reg()))
+    }
+
+    pub fn copy_to_heap(&mut self, r#ref: Value) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::CopyToHeap(dest, r#ref.unwrap_reg()))
+    }
+
+    pub fn set_variant(&mut self, new_tag_name: Symbol, new_value: Option<Value>) -> Value {
+        self.push_instr_with_dest(|dest| Instruction::SetVariant(dest, new_tag_name, 
+                new_value.unwrap_or(Value::LiteralUnit)))
+    }
+}
+

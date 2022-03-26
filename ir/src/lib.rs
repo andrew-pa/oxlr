@@ -2,7 +2,7 @@
 //! structures. Each module is represented by a [`Module`] structure, which can be (de)serialized
 //! to/from a file, for usage in other programs. The actual virtual machine code is defined in the
 //! [`code`] module, and is stored in single static assignment form.
-use std::{borrow::Cow, collections::HashMap, fmt::Display};
+use std::{borrow::Cow, collections::HashMap, fmt::Display, str::FromStr};
 use serde::{Serialize, Deserialize};
 pub use semver::{Version, VersionReq};
 
@@ -159,6 +159,16 @@ impl Path {
 impl<'a, T: 'a + AsRef<str>> From<T> for Path {
     fn from(s: T) -> Self {
         Path(s.as_ref().split("::").map(|s| Symbol(s.to_string())).collect())
+    }
+}
+
+impl FromStr for Path {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let p: Vec<Symbol> = s.split("::").map(|s| Symbol(s.to_string())).collect();
+        if p.len() == 0 { anyhow::bail!("path must have at least one element") }
+        Ok(Path(p))
     }
 }
 
